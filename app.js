@@ -5,48 +5,40 @@ const postModel = require("./models/post")
 const cookieParser = require('cookie-parser')
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
-const multer = require('multer')
 const crypto = require('crypto')
 const path = require('path')
-
+const upload = require('./config/multerconfig')
 
 app.set("view engine", "ejs")
 app.use(express.json())
 app.use(express.urlencoded({extended: true}))
 app.use(cookieParser())
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-      cb(null, './public/images/uploads')
-    },
-    filename: function (req, file, cb) {
-      crypto.randomBytes(12, function(err, bytes){
-        const fn = bytes.toString("hex") + path.extname(file.originalname)
-        cb(null, fn)
-      })
-    }
-  })
-  
-const upload = multer({ storage: storage })
+app.use(express.static(path.join(__dirname, "public")))
 
-
+// basic Slash route
 app.get('/', function(req, res){
     res.render("index")
 })
 
-app.get('/test', function(req, res){
-    res.render("test")
+// profile pic upload routes
+app.get('/profile/upload', function(req, res){
+    res.render("profileupload")
 })
-
-app.post('/upload', upload.single("image"), function(req, res){
-    console.log(req.file)
-    res.render("test")
+ 
+app.post('/upload', isLoggedIn, upload.single("image"), async (req, res) => {
+    let user = await userModel.findOne({email: req.user.email})
+    user.profilepic = req.file.filename
+    await user.save()
+    res.redirect('/profile')
 })
 
 app.get('/profile', isLoggedIn, async function(req, res){
     let user = await userModel.findOne({email: req.user.email}).populate("posts")
     res.render('profile', {user})
+    
 })
 
+// like a post routes
 app.get('/like/:id', isLoggedIn, async function(req, res){
     let post = await postModel.findOne({_id: req.params.id}).populate("user")
     if(post.likes.indexOf(req.user.userid) === -1){
@@ -82,11 +74,12 @@ app.post('/post', isLoggedIn, async function(req, res){
     res.redirect('/profile')
 })
 
+// login route
 app.get('/login', function(req, res){
     res.render("login")
 })
 
-
+//  register route
 app.post('/register', async function(req, res){
     let {email, password, username, name, age} = req.body;
     let user = await userModel.findOne({email})
@@ -124,11 +117,13 @@ app.post('/login', async function(req, res){
     })
 })
 
+// logout route
 app.get('/logout', async function(req, res){
     res.cookie("token", "");
     res.redirect("/login")
 })
 
+// middleware function
 function isLoggedIn(req, res, next) {
     try {
         const token = req.cookies.token;
